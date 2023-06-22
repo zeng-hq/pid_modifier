@@ -20,7 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'pidmodify_node = pid_modifier.pidmodify_node:main'
+            'pidmodifier = pid_modifier.pidmodify_node:main',
+            'offer = pid_modifier.offboard_control:main',
         ],
     },
 )

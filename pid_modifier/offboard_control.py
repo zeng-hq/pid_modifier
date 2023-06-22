@@ -3,38 +3,12 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition, VehicleStatus
 
-class px4_params():
-    MC_PITCHRATE_D = 954.0
-    # MC_PITCHRATE_FF
-    MC_PITCHRATE_I = 956.0
-    # MC_PITCHRATE_K
-    # MC_PITCHRATE_MAX
-    MC_PITCHRATE_P = 959.0 #(0.01, 0.6)
-    # MC_PITCH_P = 960.0
-    # MC_PR_INT_LIM
-    MC_ROLLRATE_D = 962.0
-    # MC_ROLLRATE_FF
-    MC_ROLLRATE_I = 964.0
-    # MC_ROLLRATE_K
-    # MC_ROLLRATE_MAX
-    MC_ROLLRATE_P = 967.0
-    # MC_ROLL_P
-    # MC_RR_INT_LIM
-    MC_YAWRATE_D = 970.0
-    # MC_YAWRATE_FF
-    MC_YAWRATE_I = 972.0
-    # MC_YAWRATE_K
-    # MC_YAWRATE_MAX
-    MC_YAWRATE_P = 975.0
-    # MC_YAW_P
 
-
-
-
-class pidmodify_node(Node):
+class OffboardControl(Node):
+    """Node for controlling a vehicle in offboard mode."""
 
     def __init__(self) -> None:
-        super().__init__('pidmodify_takeoff_and_land')
+        super().__init__('offboard_control_takeoff_and_land')
 
         # Configure QoS profile for publishing and subscribing
         qos_profile = QoSProfile(
@@ -58,12 +32,8 @@ class pidmodify_node(Node):
         self.vehicle_status_subscriber = self.create_subscription(
             VehicleStatus, '/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
 
-
         # Initialize variables
         self.offboard_setpoint_counter = 0
-        self.pr = 0.0
-        self.p = 0.0
-        self.mode = 0.0
         self.vehicle_local_position = VehicleLocalPosition()
         self.vehicle_status = VehicleStatus()
         self.takeoff_height = -5.0
@@ -95,17 +65,7 @@ class pidmodify_node(Node):
         """Switch to offboard mode."""
         self.publish_vehicle_command(
             VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0)
-        # self.publish_vehicle_command(
-            # VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0)
         self.get_logger().info("Switching to offboard mode")
-
-    def engage_mode(self, mode):
-        """Switch to offboard mode."""
-        self.publish_vehicle_command(
-            VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=mode, param2=6.0)
-        # self.publish_vehicle_command(
-            # VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0)
-        self.get_logger().info(f"Switching to {mode}")
 
     def land(self):
         """Switch to land mode."""
@@ -130,7 +90,7 @@ class pidmodify_node(Node):
         msg.yaw = 1.57079  # (90 degree)
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_publisher.publish(msg)
-        # self.get_logger().info(f"Publishing position setpoints {[x, y, z]}")
+        self.get_logger().info(f"Publishing position setpoints {[x, y, z]}")
 
     def publish_vehicle_command(self, command, **params) -> None:
         """Publish a vehicle command."""
@@ -151,61 +111,29 @@ class pidmodify_node(Node):
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.vehicle_command_publisher.publish(msg)
 
-    def modify_pid(self, pidparam, value):
-        msg = VehicleCommand()
-        msg.command = 180
-        msg.param1 = pidparam
-        msg.param2 = value
-        msg.param3 = 0.0
-        msg.param4 = 0.0
-        msg.param5 = 0.0
-        msg.param6 = 0.0
-        msg.param7 = 0.0
-        msg.target_system = 1
-        msg.target_component = 1
-        msg.source_system = 1
-        msg.source_component = 1
-        msg.from_external = True
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.vehicle_command_publisher.publish(msg)
-        self.get_logger().info(f"Modify {pidparam} : {value}")
-
     def timer_callback(self) -> None:
         """Callback function for the timer."""
         self.publish_offboard_control_heartbeat_signal()
-        
-        #4.0 mission; 
-        if self.offboard_setpoint_counter %200 == 10:
-            self.engage_mode(self.mode)
-            self.mode += 1.0
-            # self.pr = (self.pr + 0.01) % 0.06
-            # self.engage_offboard_mode()
-            # self.modify_pid(px4_params.MC_PITCHRATE_P, self.pr+0.035)
-            # self.p = (self.p + 1.0) % 2
-        
-        # if self.offboard_setpoint_counter == 20:
-        #    self.arm()
 
-        # if self.vehicle_local_position.z > self.takeoff_height and self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
-        #     self.publish_position_setpoint(0.0, self.p, self.takeoff_height)
+        if self.offboard_setpoint_counter == 10:
+            self.engage_offboard_mode()
+            self.arm()
 
-        # elif self.vehicle_local_position.z <= self.takeoff_height:
-        #     self.land()
-        #     exit(0)
+        if self.vehicle_local_position.z > self.takeoff_height and self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
+            self.publish_position_setpoint(0.0, 0.0, self.takeoff_height)
 
-        if self.offboard_setpoint_counter < 20001:
+        elif self.vehicle_local_position.z <= self.takeoff_height:
+            self.land()
+            exit(0)
+
+        if self.offboard_setpoint_counter < 11:
             self.offboard_setpoint_counter += 1
-        else:
-            # self.land()
-            exit(0)            
-
-
 
 
 def main(args=None) -> None:
     print('Starting offboard control node...')
     rclpy.init(args=args)
-    offboard_control = pidmodify_node()
+    offboard_control = OffboardControl()
     rclpy.spin(offboard_control)
     offboard_control.destroy_node()
     rclpy.shutdown()
