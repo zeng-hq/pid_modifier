@@ -25,7 +25,6 @@ class OffboardController(Node):
         self.setpoint_publisher_ = self.create_publisher(PositionTarget, '/mavros/setpoint_raw/local', qos_profile)
         self.pos_local_publisher_ = self.create_publisher(PoseStamped, 'mavros/setpoint_position/local', qos_profile)
 
-
         while not self.set_mode_service_.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('waiting offboard...')
         while not self.arm_service_.wait_for_service(timeout_sec=1.0):
@@ -50,10 +49,10 @@ class OffboardController(Node):
         msg = PoseStamped()
         msg.pose.position.x = 0.0
         msg.pose.position.y = 0.0
-        msg.pose.position.z = 20.0
+        msg.pose.position.z = -20.0
         self.pos_local_publisher_.publish(msg)
-        for i in range(10):
-            self.pos_local_publisher_.publish(msg)
+        # for i in range(100):
+        #     self.pos_local_publisher_.publish(msg)
 
         armCMD = CommandBool.Request()
         armCMD.value = True        
@@ -78,21 +77,33 @@ class OffboardController(Node):
 
         self.pos_local_publisher_.publish(msg)
 
+    def set_desired_attitude(self):
+        msg = PositionTarget()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.coordinate_frame = PositionTarget.FRAME_BODY_NED
+        msg.type_mask = PositionTarget.IGNORE_PX | PositionTarget.IGNORE_PY | PositionTarget.IGNORE_PZ | PositionTarget.IGNORE_VX | PositionTarget.IGNORE_VY | PositionTarget.IGNORE_VZ | PositionTarget.IGNORE_AFX | PositionTarget.IGNORE_AFY | PositionTarget.IGNORE_AFZ | PositionTarget.IGNORE_YAW_RATE
+        msg.position.z = -50.0  # 设置飞行高度为负值（负值表示相对于起始高度的偏移）
 
+        # msg.yaw = 0.0
+        msg.position.x = 0.1
+        msg.position.y = 0.0
+        msg.position.z = 0.0
 
-def main(args=None):
+        self.setpoint_publisher_.publish(msg)
+
+def offboard_control(args=None):
     rclpy.init(args=args)
     offboard_controller = OffboardController()
 
     offboard_controller.arm_drone()
 
+    # offboard_controller.set_desired_attitude()
     while rclpy.ok():
         offboard_controller.set_offboard_mode()
-        # offboard_controller.set_pos()
-        time.sleep(0.3)
+        offboard_controller.set_pos()
         rclpy.spin_once(offboard_controller)
     offboard_controller.destroy_node()
     rclpy.shutdown()
 
-if __name__ == '__main__':
-    main()
+##########################################################333
+        
